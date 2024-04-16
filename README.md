@@ -1,11 +1,13 @@
 # DUtil
-A java based utility for generating edge lines/notan to assist with image references
+A java based command line utility for generating edge lines/notan to assist with image references
 
 This utility is meant to be used to generate edge detected images/notan images on low end devices 
 which support java but don't have support for python numpy and data science libraries.
 
 -> Supports conversion to gray scale, edge detection, notan, drawing a scale over the final image & gaussian blur
+
 -> Supports reading jpg, png and other common formats and outputs a jpg file only.
+
 -> Supports combining multiple operations using '::' symbol.
 
 Usage:
