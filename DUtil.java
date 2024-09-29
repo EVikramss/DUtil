@@ -15,9 +15,6 @@ public class DUtil {
 	// main methods start
 	public static void main(String[] args) throws Exception {
 
-		args = new String[] { "C:\\Users\\sriemani\\Pictures\\study_2_by_raichiyo33_d8ibmmv-fullview.jpg",
-				"gam::cbw::b 1::e 0.05 0.09::png" };
-
 		if (args.length == 0) {
 			showHelp();
 		}
