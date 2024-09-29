@@ -1,4 +1,7 @@
+
+import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -12,20 +15,11 @@ public class DUtil {
 	// main methods start
 	public static void main(String[] args) throws Exception {
 
+		args = new String[] { "C:\\Users\\sriemani\\Pictures\\study_2_by_raichiyo33_d8ibmmv-fullview.jpg",
+				"gam::cbw::b 1::e 0.05 0.09::png" };
+
 		if (args.length == 0) {
-			System.out.println("Pass Arguments as: imageInput \"operator args | operator args | ...\" ");
-			System.out.println("");
-			System.out.println("Supported operators :");
-			System.out.println("");
-			System.out.println("cbw (convert to bw img)");
-			System.out.println("b (blur) sigma size");
-			System.out.println("e (edge detect) lowThres highThresh");
-			System.out.println("n (notan) divisions");
-			System.out.println("r (ruler) xdiv ydiv");
-			System.out.println("");
-			System.out.println("Eg: Canny \"b 1::e 0.05 0.09::r\"");
-			System.out.println("");
-			System.exit(0);
+			showHelp();
 		}
 
 		new DUtil().run(args);
@@ -42,6 +36,7 @@ public class DUtil {
 		BufferedImage bi = ImageIO.read(new File(args[0]));
 		final int width = bi.getWidth();
 		final int height = bi.getHeight();
+		boolean saveAsJPG = true;
 		System.out.println("Img size w, h :: " + width + ", " + height);
 
 		final String argStr = args[1].trim();
@@ -52,6 +47,9 @@ public class DUtil {
 			final String op = arrVals[0];
 
 			switch (op) {
+			case "gam":
+				generateGamutFile(bi);
+				break;
 			case "b":
 				final double sigma = extractArgAsDoubleIfNotNull(argStrArrVal, arrVals, 1, 1.0);
 				final int size = extractArgAsIntIfNotNull(argStrArrVal, arrVals, 2, 5);
@@ -69,16 +67,170 @@ public class DUtil {
 				final int wd = extractArgAsIntIfNotNull(argStrArrVal, arrVals, 1, width / 10);
 				final int htt = extractArgAsIntIfNotNull(argStrArrVal, arrVals, 2, height / 10);
 				divideImg(bi, wd, htt);
-            break;
+				break;
 			case "n":
 				final int divs = extractArgAsIntIfNotNull(argStrArrVal, arrVals, 1, 10);
 				bi = notan(bi, divs);
-           break;
+				break;
+			case "su":
+				BufferedImage bi2 = null;
+				try {
+					bi2 = ImageIO.read(new File(args[2]));
+				} catch (Exception e) {
+					System.out.println("Error reading second image for operator su " + e.getMessage());
+					showHelp();
+				}
+				final int mvx = extractArgAsIntIfNotNull(argStrArrVal, arrVals, 1, 0);
+				final int mvy = extractArgAsIntIfNotNull(argStrArrVal, arrVals, 2, 0);
+				bi = superimpose(bi, bi2, mvx, mvy);
+				break;
+			case "png":
+				try {
+					bi = invertBW(bi);
+					saveAsJPG = false;
+				} catch (Exception e) {
+					System.out.println("Error reading second image for operator su " + e.getMessage());
+					showHelp();
+				}
 			}
 		}
 
-		final File output = new File(System.getProperty("user.dir") + File.separatorChar + "img.jpg");
-		ImageIO.write(bi, "JPG", output);
+		if (saveAsJPG) {
+			final File output = new File(System.getProperty("user.dir") + File.separatorChar + "img.jpg");
+			ImageIO.write(bi, "JPG", output);
+		} else {
+			final File output = new File(System.getProperty("user.dir") + File.separatorChar + "img.png");
+			ImageIO.write(bi, "PNG", output);
+		}
+
+	}
+
+	/**
+	 * This function is used to generate a gamut map of an image and write it to
+	 * gmap.png file.
+	 * 
+	 * @param bi
+	 * @throws IOException
+	 */
+	private void generateGamutFile(BufferedImage bi) throws IOException {
+
+		int bw = 1024;
+		int bh = 1024;
+		int cx = bw / 2;
+		int cy = bh / 2;
+		float r = (float) (cx - 20);
+		float value = 0.7f;
+		float valueImg = 1.0f;
+
+		BufferedImage gamutImg = new BufferedImage(bh, bh, BufferedImage.TYPE_INT_RGB);
+
+		// for loops to draw hue - saturation circle
+		for (int i = 0; i < bw; i++) {
+			for (int j = 0; j < bh; j++) {
+				float ix = (float) (i - cx);
+				float iy = (float) (cy - j);
+
+				float dist = ((ix * ix) + (iy * iy));
+				dist = (float) Math.sqrt(dist);
+				if (dist > r)
+					continue;
+
+				float saturation = dist / r;
+				float hue = (float) Math.atan(Math.abs(iy / ix));
+				hue = hue * 180.0f / (float) Math.PI;
+
+				if (ix < 0.0f && iy > 0.0f)
+					hue = 180.0f - hue;
+				else if (ix < 0.0f && iy <= 0.0f)
+					hue += 180.0f;
+				else if (ix >= 0.0f && iy < 0.0f)
+					hue = 360.0f - hue;
+
+				hue = hue / 360.0f;
+
+				int rgbVal = Color.getHSBColor(hue, saturation, value).getRGB();
+				gamutImg.setRGB(i, j, rgbVal);
+			}
+		}
+
+		// map values of image to circle and overlay as lighter value points
+		for (int i = 0; i < bi.getWidth(); i++) {
+			for (int j = 0; j < bi.getHeight(); j++) {
+				int val = bi.getRGB(i, j);
+
+				int red = (val >> 16) & 0xFF;
+				int green = (val >> 8) & 0xFF;
+				int blue = val & 0xFF;
+
+				float[] hsv = Color.RGBtoHSB(red, green, blue, null);
+				float hue = -(float) (2.0f * Math.PI * hsv[0]);
+				float saturation = r * hsv[1];
+
+				int x = cx + (int) (saturation * Math.cos(hue));
+				int y = cy + (int) (saturation * Math.sin(hue));
+
+				val = gamutImg.getRGB(x, y);
+				red = (val >> 16) & 0xFF;
+				green = (val >> 8) & 0xFF;
+				blue = val & 0xFF;
+
+				hsv = Color.RGBtoHSB(red, green, blue, null);
+				int rgbVal = Color.getHSBColor(hsv[0], hsv[1], valueImg).getRGB();
+				gamutImg.setRGB(x, y, rgbVal);
+			}
+		}
+
+		File output = new File(System.getProperty("user.dir") + File.separatorChar + "gmap.png");
+		ImageIO.write(gamutImg, "PNG", output);
+	}
+
+	/**
+	 * Invert image to transparent background and black lines in foreground
+	 * 
+	 * @param bi
+	 * @return
+	 */
+	private BufferedImage invertBW(BufferedImage bi) {
+
+		BufferedImage out = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
+
+		for (int i = 0; i < bi.getWidth(); i++) {
+			for (int j = 0; j < bi.getHeight(); j++) {
+				int val = bi.getRGB(i, j);
+				if ((val & 0x00ffffff) < 10) {
+					out.setRGB(i, j, 0x00ffffff);
+				} else {
+					out.setRGB(i, j, 0xff000000);
+				}
+			}
+		}
+
+		return out;
+	}
+
+	/**
+	 * Shows help
+	 * 
+	 */
+	private static void showHelp() {
+		System.out.println("Pass Arguments as: imageInput \"operator args | operator args | ...\" ");
+		System.out.println("");
+		System.out.println("Supported operators :");
+		System.out.println("");
+		System.out.println("cbw (convert to bw img)");
+		System.out.println("b (blur) sigma size");
+		System.out.println("e (edge detect) lowThres highThresh");
+		System.out.println("n (notan) divisions");
+		System.out.println("r (ruler) xdiv ydiv");
+		System.out.println("gam (generate gamut mapping. Use at beginning)");
+		System.out.println("png (generate png image)");
+		System.out.println("su (superimpose) mvx mvy \" img2");
+		System.out.println("");
+		System.out.println("Eg: Canny img1 \"b 1::e 0.05 0.09::r\"");
+		System.out.println("Eg: Canny img1 \"b 1::e 0.05 0.09::r::s\" img2");
+		System.out.println("");
+
+		System.exit(0);
 	}
 	// main methods end
 
@@ -173,6 +325,45 @@ public class DUtil {
 
 		return bi;
 	}
+
+	/**
+	 * SuperImpose 1st/processed image on top of 2nd one only when intensity of 1st
+	 * image pixel is greater than 0.
+	 * 
+	 * @param bi
+	 * @param bi2
+	 * @param mvx
+	 * @param mvy
+	 * @return
+	 */
+	private BufferedImage superimpose(BufferedImage bi, BufferedImage bi2, int mvx, int mvy) {
+
+		if (mvx != 0 || mvy != 0) {
+			moveImg(bi, mvx, mvy);
+		}
+
+		int width1 = bi.getWidth();
+		int height1 = bi.getHeight();
+
+		int width2 = bi2.getWidth();
+		int height2 = bi2.getHeight();
+
+		int minWidth = width1 > width2 ? width2 : width1;
+		int minHeight = height1 > height2 ? height2 : height1;
+
+		bi = scaleImg(bi, minWidth, minHeight, true);
+		bi2 = scaleImg(bi2, minWidth, minHeight, false);
+
+		for (int i = 0; i < minWidth; i++) {
+			for (int j = 0; j < minHeight; j++) {
+				int pval = bi.getRGB(i, j) & 0xff;
+				if (pval > 200)
+					bi2.setRGB(i, j, Color.WHITE.getRGB());
+			}
+		}
+
+		return bi2;
+	}
 	// operator method end
 
 	// helper methods start
@@ -264,6 +455,38 @@ public class DUtil {
 		}
 
 		return output;
+	}
+
+	/**
+	 * Scale an image to given width & height
+	 * 
+	 * @param bi
+	 * @param width
+	 * @param height
+	 * @param convertToBW
+	 * @return
+	 */
+	private BufferedImage scaleImg(BufferedImage bi, int width, int height, boolean convertToBW) {
+		Image tmp = bi.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+		bi = new BufferedImage(width, height, convertToBW ? BufferedImage.TYPE_BYTE_GRAY : bi.getType());
+		Graphics2D g2d = bi.createGraphics();
+		g2d.drawImage(tmp, 0, 0, null);
+		g2d.dispose();
+		return bi;
+	}
+
+	/**
+	 * Move image by given amounts
+	 * 
+	 * @param bi
+	 * @param mvx
+	 * @param mvy
+	 */
+	private void moveImg(BufferedImage bi, int mvx, int mvy) {
+		Graphics2D g2d = bi.createGraphics();
+		Image img = bi.getSubimage(0, 0, bi.getWidth(), bi.getHeight());
+		g2d.drawImage(img, -mvx, -mvy, null);
+		g2d.dispose();
 	}
 	// helper methods end
 
