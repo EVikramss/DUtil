@@ -1,5 +1,4 @@
-This utility is meant to be used to generate edge detected images/notan images on low end devices 
-which support java but don't have support for python numpy and data science libraries.
+This utility is for generating edge detected images/notan images on low end devices which support java but don't have support for python numpy and data science libraries.
 
 -> Supports conversion to gray scale, edge detection, notan, gamut map, drawing a scale over the final image & gaussian blur
 -> Supports reading jpg, png and other common formats and outputs a jpg file only.
